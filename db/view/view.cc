@@ -1164,7 +1164,7 @@ view_builder::view_builder(database& db, db::system_distributed_keyspace& sys_di
 }
 
 future<> view_builder::start() {
-    _started = seastar::async([this] {
+    return seastar::async([this] {
         // Wait for schema agreement even if we're a seed node.
         while (!_mm.have_schema_agreement()) {
             if (_as.abort_requested()) {
@@ -1180,22 +1180,19 @@ future<> view_builder::start() {
         // Waited on indirectly in stop().
         (void)_build_step.trigger();
     });
-    return make_ready_future<>();
 }
 
 future<> view_builder::stop() {
     vlogger.info("Stopping view builder");
     _as.request_abort();
-    return _started.finally([this] {
-        _mm.unregister_listener(this);
-        return _sem.wait().then([this] {
-            _sem.broken();
-            return _build_step.join();
-        }).handle_exception_type([] (const broken_semaphore&) {
-            // ignored
-        }).handle_exception_type([] (const semaphore_timed_out&) {
-            // ignored
-        });
+    _mm.unregister_listener(this);
+    return _sem.wait().then([this] {
+        _sem.broken();
+        return _build_step.join();
+    }).handle_exception_type([] (const broken_semaphore&) {
+        // ignored
+    }).handle_exception_type([] (const semaphore_timed_out&) {
+        // ignored
     });
 }
 
